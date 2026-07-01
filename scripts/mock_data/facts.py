@@ -57,10 +57,11 @@ SELECT
     p.UnitPrice * q.Quantity
 FROM #NewOrders o
 CROSS JOIN LineNums ln
+CROSS APPLY (SELECT (CHECKSUM(NEWID()) & 0x7FFFFFFF) % 4 + 1 AS MaxLines) mx
 CROSS APPLY (SELECT (CHECKSUM(NEWID()) & 0x7FFFFFFF) % ? + 1 AS ProductID) pid
 CROSS APPLY (SELECT (CHECKSUM(NEWID()) & 0x7FFFFFFF) % 5 + 1 AS Quantity) q
 INNER JOIN sales.products p ON p.ProductID = pid.ProductID
-WHERE ln.n <= ((CHECKSUM(NEWID()) & 0x7FFFFFFF) % 4) + 1;
+WHERE ln.n <= mx.MaxLines;
 """
 
 _UPDATE_ORDER_TOTALS = """
