@@ -1,0 +1,10 @@
+resources:
+  pipelines:
+    silver_gold_pipeline:
+      name: ${var.pipeline_name}
+      catalog: ${var.catalog}
+      serverless: true
+      continuous: false
+      libraries:
+        - glob:
+            include: pipelines/transformations/**

@@ -28,15 +28,27 @@ built-in data quality expectations.
 ## Repository layout
 
 ```
-├── src/moci_pipeline/       # Modular Python package (extract/transform/load/utils/config)
-├── jobs/                    # Bronze ingestion job entrypoints (Databricks Jobs)
-├── pipelines/               # Lakeflow Declarative Pipeline definitions (Silver/Gold)
+├── src/moci_pipeline/       # Modular Python package
+│   ├── bronze/sqlserver/   # One module per source table: extract (JDBC) + load (Delta)
+│   └── utils/               # Shared helpers: JDBC reader, watermark control table, Delta writer
+├── jobs/                    # Bronze ingestion job entrypoints (Databricks Jobs, plain .py scripts)
+├── pipelines/               # Lakeflow Declarative Pipeline source (Silver/Gold)
+│   ├── transformations/     # The pipeline DAG: transformations/silver/*.py, transformations/gold/*.py
+│   ├── explorations/        # Ad hoc notebooks over pipeline output — not part of the DAG
+│   └── utilities/           # Shared helpers for transformations/ (e.g. SCD Type 2 merge logic)
 ├── sql/                     # SQL Server DDL + mock data generation SQL
 ├── scripts/                 # One-off / setup scripts (mock data orchestration)
 ├── tests/                   # pytest unit tests
 ├── resources/               # Databricks Asset Bundle resources (jobs/pipelines yml) — added later
 └── databricks.yml           # Databricks Asset Bundle root config — added later
 ```
+
+**Why one file per table (not generic extract/ and load/ layers):** each Bronze table's
+extract (partitioned JDBC read) and load (Delta append write) logic lives together in one
+file, calling into shared `utils/` helpers. This keeps each table's ingestion
+self-contained and easy to review/test in isolation, rather than requiring the job to
+wire together separate generic extract and load modules per table. `sqlserver/` is a
+per-source-system folder — a second source system would get its own sibling folder.
 
 ## Status
 

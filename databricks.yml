@@ -1,0 +1,32 @@
+bundle:
+  name: moci-project-demo
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog name for this target
+    default: moci_dev
+  pipeline_name:
+    description: Lakeflow pipeline name
+    default: moci_dev_silver_gold
+  job_name:
+    description: Master workflow job name
+    default: moci_dev_master
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: moci_dev
+      pipeline_name: moci_dev_silver_gold
+      job_name: moci_dev_master
+
+  prod:
+    mode: production
+    variables:
+      catalog: moci_prod
+      pipeline_name: moci_prod_silver_gold
+      job_name: moci_prod_master
