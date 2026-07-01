@@ -47,21 +47,24 @@ FROM Nums;
 )
 
 _INSERT_ORDER_ITEMS_FOR_BATCH = """
-;WITH LineNums AS (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4)
+;WITH LineNums AS (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4),
+OrderLineCount AS (
+    SELECT o.OrderID, (CHECKSUM(NEWID(), o.OrderID) & 0x7FFFFFFF) % 4 + 1 AS MaxLines
+    FROM #NewOrders o
+)
 INSERT INTO sales.order_items (OrderID, ProductID, Quantity, UnitPrice, LineTotal)
 SELECT
-    o.OrderID,
+    olc.OrderID,
     pid.ProductID,
     q.Quantity,
     p.UnitPrice,
     p.UnitPrice * q.Quantity
-FROM #NewOrders o
+FROM OrderLineCount olc
 CROSS JOIN LineNums ln
-CROSS APPLY (SELECT (CHECKSUM(NEWID()) & 0x7FFFFFFF) % 4 + 1 AS MaxLines) mx
-CROSS APPLY (SELECT (CHECKSUM(NEWID()) & 0x7FFFFFFF) % ? + 1 AS ProductID) pid
-CROSS APPLY (SELECT (CHECKSUM(NEWID()) & 0x7FFFFFFF) % 5 + 1 AS Quantity) q
-INNER JOIN sales.products p ON p.ProductID = pid.ProductID
-WHERE ln.n <= mx.MaxLines;
+CROSS APPLY (SELECT (CHECKSUM(NEWID(), olc.OrderID, ln.n) & 0x7FFFFFFF) % ? + 1 AS ProductID) pid
+CROSS APPLY (SELECT (CHECKSUM(NEWID(), olc.OrderID, ln.n) & 0x7FFFFFFF) % 5 + 1 AS Quantity) q
+LEFT JOIN sales.products p ON p.ProductID = pid.ProductID
+WHERE ln.n <= olc.MaxLines;
 """
 
 _UPDATE_ORDER_TOTALS = """
@@ -78,6 +81,14 @@ INNER JOIN (
 
 _CREATE_TEMP_TABLE = "CREATE TABLE #NewOrders (OrderID BIGINT PRIMARY KEY);"
 _DROP_TEMP_TABLE = "IF OBJECT_ID('tempdb..#NewOrders') IS NOT NULL DROP TABLE #NewOrders;"
+
+_FILL_ORPHAN_ORDERS_BATCH = """
+INSERT INTO #NewOrders (OrderID)
+SELECT TOP (?) o.OrderID
+FROM sales.orders o
+WHERE NOT EXISTS (SELECT 1 FROM sales.order_items oi WHERE oi.OrderID = o.OrderID)
+ORDER BY o.OrderID;
+"""
 
 
 def populate_orders_and_order_items(
@@ -134,3 +145,57 @@ def populate_orders_and_order_items(
             )
 
     return orders_inserted, order_items_inserted
+
+
+def backfill_missing_order_items(
+    settings: SqlServerSettings,
+    product_count: int,
+    batch_size: int = 50_000,
+) -> int:
+    """One-off remediation for orders that ended up with zero sales.order_items
+    rows (see docs/sql-server-tips notes on the INNER JOIN + parameterized
+    CROSS APPLY(NEWID()) row-dropping bug, fixed in _INSERT_ORDER_ITEMS_FOR_BATCH).
+
+    Finds orders with no order_items, generates their line items in batches
+    using the corrected query, and recomputes their TotalAmount. Returns the
+    total number of order_items rows inserted.
+    """
+    order_items_inserted = 0
+    batch_num = 0
+
+    with get_connection(settings, autocommit=False) as conn:
+        cursor = conn.cursor()
+        while True:
+            batch_num += 1
+            cursor.execute(_DROP_TEMP_TABLE)
+            cursor.execute(_CREATE_TEMP_TABLE)
+            cursor.execute(_FILL_ORPHAN_ORDERS_BATCH, (batch_size,))
+
+            cursor.execute("SELECT COUNT(*) FROM #NewOrders;")
+            orphan_count = cursor.fetchone()[0]
+            if orphan_count == 0:
+                cursor.execute(_DROP_TEMP_TABLE)
+                conn.commit()
+                break
+
+            cursor.execute(_INSERT_ORDER_ITEMS_FOR_BATCH, (product_count,))
+            cursor.execute(_UPDATE_ORDER_TOTALS)
+
+            cursor.execute(
+                "SELECT COUNT(*) FROM sales.order_items "
+                "WHERE OrderID IN (SELECT OrderID FROM #NewOrders);"
+            )
+            new_items = cursor.fetchone()[0]
+            cursor.execute(_DROP_TEMP_TABLE)
+            conn.commit()
+
+            order_items_inserted += new_items
+            logger.info(
+                "Backfill batch %d: %d orphan orders, +%d order_items",
+                batch_num,
+                orphan_count,
+                new_items,
+            )
+
+    logger.info("Backfill complete: %d order_items inserted total", order_items_inserted)
+    return order_items_inserted

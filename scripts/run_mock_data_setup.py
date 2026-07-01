@@ -30,6 +30,14 @@ def parse_args() -> argparse.Namespace:
         "--skip-dimensions", action="store_true", help="Skip dimension table population"
     )
     parser.add_argument("--skip-facts", action="store_true", help="Skip fact table population")
+    parser.add_argument(
+        "--backfill-orphan-order-items",
+        action="store_true",
+        help=(
+            "Only backfill order_items for existing orders that have zero line items, "
+            "then exit (does not run schema/dimension/fact generation)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -39,6 +47,13 @@ def main() -> None:
     volumes = load_mock_data_volumes()
 
     start = time.time()
+
+    if args.backfill_orphan_order_items:
+        logger.info("Backfilling order_items for orphan orders...")
+        inserted = facts.backfill_missing_order_items(settings, product_count=volumes.products)
+        elapsed = time.time() - start
+        logger.info("Backfill complete in %.1f seconds: +%d order_items", elapsed, inserted)
+        return
 
     if not args.skip_schema:
         logger.info("Creating database/schema/tables...")
