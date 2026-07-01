@@ -51,3 +51,6 @@ data/
 # --- Logs ---
 *.log
 logs/
+
+# --- Local-only session notes (discussion log, progress tracker) ---
+session-notes/
