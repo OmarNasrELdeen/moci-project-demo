@@ -1,4 +1,4 @@
-# Moci Project Demo — SQL Server → Databricks Medallion Migration
+# Data Project Demo — SQL Server → Databricks Medallion Migration
 
 End-to-end demo migrating multiple tables from an on-premises SQL Server instance into
 Databricks (Free Edition, Unity Catalog, serverless compute), following the
