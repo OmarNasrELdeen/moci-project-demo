@@ -1,10 +1,21 @@
 resources:
   pipelines:
-    silver_gold_pipeline:
-      name: ${var.pipeline_name}
+    silver_pipeline:
+      name: ${var.silver_pipeline_name}
       catalog: ${var.catalog}
+      schema: silver
       serverless: true
       continuous: false
       libraries:
         - glob:
-            include: pipelines/transformations/**
+            include: ../pipelines/transformations/silver/**
+
+    gold_pipeline:
+      name: ${var.gold_pipeline_name}
+      catalog: ${var.catalog}
+      schema: gold
+      serverless: true
+      continuous: false
+      libraries:
+        - glob:
+            include: ../pipelines/transformations/gold/**

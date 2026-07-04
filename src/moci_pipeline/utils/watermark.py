@@ -9,7 +9,7 @@ Databricks — not via local pytest (no pyspark locally, by design).
 
 from __future__ import annotations
 
-from datetime import datetime
+import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ CONTROL_TABLE_NAME = "_ingestion_control"
 
 # Default watermark used the first time a table is ingested (i.e. "no prior
 # run exists yet") — far enough in the past to include all historical rows.
-EPOCH_WATERMARK = datetime(1900, 1, 1, tzinfo=datetime.UTC)
+EPOCH_WATERMARK = datetime.datetime(1900, 1, 1, tzinfo=datetime.UTC)
 
 
 def _control_table_fqn(catalog: str) -> str:
@@ -47,7 +47,7 @@ def ensure_control_table_exists(spark: SparkSession, catalog: str) -> None:
     )
 
 
-def get_last_watermark(spark: SparkSession, catalog: str, table_name: str) -> datetime:
+def get_last_watermark(spark: SparkSession, catalog: str, table_name: str) -> datetime.datetime:
     """Returns the last recorded watermark for `table_name`, or
     `EPOCH_WATERMARK` if this table has never been ingested before.
     """
@@ -62,11 +62,11 @@ def get_last_watermark(spark: SparkSession, catalog: str, table_name: str) -> da
 
 
 def update_watermark(
-    spark: SparkSession, catalog: str, table_name: str, new_watermark: datetime
+    spark: SparkSession, catalog: str, table_name: str, new_watermark: datetime.datetime
 ) -> None:
     """Upserts the watermark for `table_name` after a successful ingest."""
     fqn = _control_table_fqn(catalog)
-    now = datetime.now(datetime.UTC)
+    now = datetime.datetime.now(datetime.UTC)
     spark.sql(
         f"""
         MERGE INTO {fqn} AS target

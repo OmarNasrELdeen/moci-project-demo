@@ -15,6 +15,8 @@ def orders_bronze_cleaned():
         .where(F.col("StoreID").isNotNull())
         .withColumn("OrderDate", F.to_timestamp("OrderDate"))
         .withColumn("ModifiedDate", F.to_timestamp("ModifiedDate"))
+        .withWatermark("ModifiedDate", "1 day")
+        .dropDuplicates(["OrderID", "ModifiedDate"])
     )
 
 
