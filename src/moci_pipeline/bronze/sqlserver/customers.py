@@ -6,7 +6,7 @@ needed), incremental via the ModifiedDate watermark.
 
 from __future__ import annotations
 
-from datetime import datetime
+import datetime
 from typing import TYPE_CHECKING
 
 from moci_pipeline.utils import watermark

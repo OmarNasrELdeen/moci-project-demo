@@ -1,15 +1,13 @@
 """Bronze ingestion for sales.orders -> <catalog>.bronze.orders.
 
-Huge fact table — partitioned JDBC read, incremental via ModifiedDate
-watermark.
+Huge fact table — partitioned JDBC read by OrderID range for the initial
+backfill chunks.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
-from moci_pipeline.utils import watermark
 from moci_pipeline.utils.bronze_writer import write_bronze
 from moci_pipeline.utils.jdbc import read_table
 
@@ -19,24 +17,27 @@ if TYPE_CHECKING:
 SOURCE_TABLE = "sales.orders"
 BRONZE_TABLE_NAME = "orders"
 PARTITION_COLUMN = "OrderID"
-LOWER_BOUND = 1
-UPPER_BOUND = 5000000
 NUM_PARTITIONS = 4
 
 
-def ingest(spark: SparkSession, catalog: str) -> None:
-    """Extracts new/changed rows from sales.orders since the last recorded
-    watermark, appends to Bronze, and advances the watermark.
+def ingest(
+    spark: SparkSession,
+    catalog: str,
+    *,
+    lower_bound: int,
+    upper_bound: int,
+) -> None:
+    """Extracts a chunk of sales.orders by OrderID range and appends it
+    to Bronze.
     """
-    watermark.ensure_control_table_exists(spark, catalog)
-    last_watermark = watermark.get_last_watermark(spark, catalog, SOURCE_TABLE)
+    if lower_bound > upper_bound:
+        raise ValueError("lower_bound must be <= upper_bound")
 
-    watermark_sql = _to_sqlserver_datetime2_literal(last_watermark)
     query = (
         "SELECT OrderID, CustomerID, StoreID, EmployeeID, OrderDate, Status, TotalAmount, "
         "CreatedDate, ModifiedDate, RowVersion "
         f"FROM {SOURCE_TABLE} "
-        f"WHERE ModifiedDate > CAST('{watermark_sql}' AS DATETIME2(3))"
+        f"WHERE OrderID BETWEEN {lower_bound} AND {upper_bound}"
     )
 
     df = read_table(
@@ -44,22 +45,11 @@ def ingest(spark: SparkSession, catalog: str) -> None:
         table=None,
         query=query,
         partition_column=PARTITION_COLUMN,
-        lower_bound=LOWER_BOUND,
-        upper_bound=UPPER_BOUND,
+        lower_bound=lower_bound,
+        upper_bound=upper_bound,
         num_partitions=NUM_PARTITIONS,
     )
     if df.isEmpty():
         return
 
     write_bronze(df, catalog, BRONZE_TABLE_NAME, SOURCE_TABLE)
-    watermark.update_watermark(spark, catalog, SOURCE_TABLE, _max_modified_date(df))
-
-
-def _to_sqlserver_datetime2_literal(value: datetime) -> str:
-    as_utc = value.astimezone(datetime.UTC)
-    return as_utc.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-
-
-def _max_modified_date(df):
-    row = df.selectExpr("max(ModifiedDate) AS max_modified_date").collect()[0]
-    return row["max_modified_date"]

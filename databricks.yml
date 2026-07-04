@@ -8,9 +8,12 @@ variables:
   catalog:
     description: Unity Catalog name for this target
     default: moci_dev
-  pipeline_name:
-    description: Lakeflow pipeline name
-    default: moci_dev_silver_gold
+  silver_pipeline_name:
+    description: Silver Lakeflow pipeline name
+    default: moci_dev_silver
+  gold_pipeline_name:
+    description: Gold Lakeflow pipeline name
+    default: moci_dev_gold
   job_name:
     description: Master workflow job name
     default: moci_dev_master
@@ -21,12 +24,14 @@ targets:
     default: true
     variables:
       catalog: moci_dev
-      pipeline_name: moci_dev_silver_gold
+      silver_pipeline_name: moci_dev_silver
+      gold_pipeline_name: moci_dev_gold
       job_name: moci_dev_master
 
   prod:
     mode: production
     variables:
       catalog: moci_prod
-      pipeline_name: moci_prod_silver_gold
+      silver_pipeline_name: moci_prod_silver
+      gold_pipeline_name: moci_prod_gold
       job_name: moci_prod_master
